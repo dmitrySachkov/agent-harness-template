@@ -17,6 +17,7 @@ A run failed, was rejected, or needed a human to step in. Do not just fix the ou
 3. Pick **one** improvement, as far down this ladder as practical (higher = stronger):
    enforced policy (hook / deny rule) > automated check (a test, a `layers.rules` line, a `check.sh` step) > template field > checklist item > explanation in `docs/` or `CLAUDE.md`.
    Prefer the smallest change that would have prevented this exact failure. If the failure is a one-off, say so and change nothing.
-4. Append an entry to `tasks/lessons.md` in the format defined at its top.
+   Word the improvement as a general rule, not as the story of this run: it must name a class of change or situation, not this file, screen or date. Test: would it make sense to someone who was not there, on a different task? If it would not, it is a one-off: say so and change nothing.
+4. Append an entry to `tasks/lessons.md` in the format defined at its top. The story of this run goes in `failure`, the general rule in `fix`.
 5. Apply the improvement only if it lives in a file you are allowed to edit (`docs/`, `tasks/_TEMPLATE/`, `CLAUDE.md`, `profiles/`). Hooks, `settings.json`, `harness.yml`, `scripts/approve.sh` and the critic are protected: for those, write the exact proposed change in the lessons entry and ask the human to apply it. `CLAUDE.md` and `profiles/` are behind Gate 1 like project code: if the edit is blocked because no approval is in force, write the proposed change in the lessons entry and ask the human for `./scripts/approve.sh --quick`.
 6. Stop. Report the diagnosis and the one change in three sentences.
