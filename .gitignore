@@ -1,0 +1,9 @@
+tasks/.active
+tasks/.quick
+tasks/.quick.tmp
+tasks/*/diff.patch
+tasks/*/diff.attempt-*.patch
+tasks/*/.package
+tasks/.swarm-*
+.claude/settings.local.json
+.DS_Store

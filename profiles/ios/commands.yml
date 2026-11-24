@@ -1,0 +1,7 @@
+commands:
+  # iOS / Swift. Filled in by scripts/init.sh (scheme, container, destination, test targets).
+  lint: "if command -v swiftlint >/dev/null; then swiftlint --strict; else exit 3; fi"
+  build: "xcodebuild __CONTAINER__ -scheme __SCHEME__ -destination '__DESTINATION__' -quiet build"
+  unit: "xcodebuild __CONTAINER__ -scheme __SCHEME__ -destination '__DESTINATION__' -quiet test -only-testing:__UNIT_TARGET__"
+  arch: "./profiles/ios/arch-check.sh"
+  ui: "xcodebuild __CONTAINER__ -scheme __SCHEME__ -destination '__DESTINATION__' -quiet test -only-testing:__UI_TARGET__"

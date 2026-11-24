@@ -1,0 +1,9 @@
+commands:
+  # One shell command per step. Empty = SKIP (reported as NOT VERIFIED).
+  # Exit code 3 from a command also means "not configured".
+  # Examples:  lint: "npm run lint"   build: "npm run build"   unit: "pytest -q"
+  lint: ""
+  build: ""
+  unit: ""
+  arch: ""
+  ui: ""

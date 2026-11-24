@@ -1,0 +1,19 @@
+# Architecture rules for the `arch` check. One rule per line:
+#   <directory> :: <extended regex> :: <message>
+# Every .swift file under <directory> is searched; any matching line is a violation.
+# Start with one or two rules you are sure about, add more after real failures.
+#
+# Examples (uncomment and adjust paths to your project):
+#
+# Domain stays pure Swift: no UI or persistence frameworks
+# Sources/Domain :: ^[[:space:]]*import[[:space:]]+(SwiftUI|UIKit|CoreData|SwiftData) :: Domain must not import UI or persistence frameworks
+#
+# Domain does not know outer layers (works when layers are separate modules / SPM targets)
+# Sources/Domain :: ^[[:space:]]*import[[:space:]]+(Data|Features) :: Domain must not depend on Data or Features
+#
+# Features reach data only through domain ports, not concrete repositories
+# Sources/Features :: [A-Za-z]+RepositoryImpl :: Features must depend on protocols, not implementations
+#
+# Note: import-based rules work when layers are modules. For folder-only layering, match the
+# type names or the paths you want to forbid, or write XCTest-based architecture tests and put them
+# in the `unit` step.

@@ -1,0 +1,60 @@
+# Harness configuration: the single source of project-specific settings.
+# Edit by hand. The agent cannot modify this file (see .claude/hooks/guard.py).
+# Run ./scripts/init.sh once to fill it in for a project.
+
+name: "__PROJECT__"
+profile: generic
+
+# Model this project runs on (sonnet = routine work, opus = hard architecture work).
+# init.sh pins it into .claude/settings.json ("model") so a `/model` switch in another project
+# does not leak here. .claude/hooks/model-check.py warns at session start when the session runs
+# a different model. Per-task override: `model:` in the task's contract.md.
+model: sonnet
+
+# Advisor: a stronger model the session model consults at decision points (see CLAUDE.md).
+# init.sh pins it into .claude/settings.json ("advisorModel") so `/advisor` in another project does not
+# leak here; model-check.py warns when the two files disagree. Must rank at or above the session model.
+# Values: none | opus | fable | a full model id. `none` pins nothing (a global /advisor can still apply).
+advisor: none
+
+# Gate 1, enforced by .claude/hooks/guard.py: the agent can edit project code only while the
+# active task's contract is approved by you (./scripts/approve.sh) and unchanged since, or while
+# a quick approval (./scripts/approve.sh --quick) is in force. false = back to instruction only.
+require_approval: true
+
+# BEGIN commands
+commands:
+  # One shell command per step. Empty = step is SKIPPED and reported as NOT VERIFIED.
+  # Exit code 3 from a command also means "not configured" (SKIP).
+  lint: ""
+  build: ""
+  unit: ""
+  arch: ""
+  ui: ""
+# END commands
+
+budgets:
+  max_repair_attempts: 3       # per failing check, then stop and escalate
+  max_unchanged_failures: 2    # identical failure repeated -> stop
+  max_files_changed: 25        # more than this -> stop and ask (scope creep)
+
+# Extra commands to block, on top of the built-in hard stops
+# (deploy, store release, publish, infra apply, DB migrations).
+# Regexes (Python syntax), matched against the whole Bash command.
+blocked_commands:
+  # - '\bmy-deploy-script\b'
+
+# Files the agent may not edit or write (globs relative to the repo root).
+# Always protected (built in): harness.yml, .claude/settings*.json, .claude/hooks/*, .claude/agents/critic.md,
+# .claude/agents/contract-reviewer.md, scripts/approve.sh, tasks/*/APPROVED, tasks/.quick, .env*
+protected_paths:
+  # - "**/Generated/**"
+  # - "**/*.pbxproj"
+
+# Paths the agent may edit without an approved contract (globs relative to the repo root).
+# Always ungated (built in): tasks/** (except an approved contract.md, which is frozen) and docs/**.
+ungated_paths:
+  # - "README.md"
+
+# Optional: absolute path to an Obsidian vault. scripts/sync-obsidian.sh copies receipts there.
+obsidian_vault: ""
