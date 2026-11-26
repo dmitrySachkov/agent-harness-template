@@ -36,6 +36,7 @@ Then, in Claude Code, inside the project:
 /receipt                  -> tasks/<id>/receipt.md and a draft pr.md; code is locked again, the agent stops
                              you read the receipt and commit yourself
 /retro                    -> if the failure was preventable: a diagnosis + one harness improvement
+/audit                    -> every ten tasks or so: which blockers repeat, and what each harness rule caught
 ```
 
 A base commit is needed so that `git diff HEAD` works in the first task: without it the critic has no diff and the evidence has to be collected by hand. If you declined it in `init.sh`, make it yourself before the first task.
@@ -52,6 +53,8 @@ The rule "code only after APPROVED" used to be an instruction. Now a hook enforc
 - The receipt closes the task: once `receipt.md` exists, code is locked again. For follow-up work after the receipt, delete the receipt yourself or grant a quick approval.
 - A quick lane for small things: `./scripts/approve.sh --quick [N]` opens up to N files (default 3, maximum 10) for 60 minutes with no contract and no critic. The hook counts the files itself.
 - `./scripts/approve.sh --status` shows what is approved now. `--revoke` withdraws the approval.
+- `./scripts/approve.sh --change` accepts changes to an approved contract. The agent records a deviation in `state.md`, under CONTRACT CHANGES; you confirm each entry in the terminal, and the hashes of the accepted ones go to `tasks/<id>/APPROVED-CHANGES`. Words in the chat are not an acceptance: `evidence.sh` reports an entry you have not accepted as a PROBLEM. Editing an accepted entry voids its acceptance.
+- High-risk paths: the `high_risk_paths` list in `harness.yml`. The agent can edit a file under such a glob only inside an approved task whose contract writes the file's full path under "Scope (in)"; a folder or a glob there does not count, and a quick approval never opens the file. An empty list (the default) turns the rule off.
 - Without approval the agent can always edit `tasks/` and `docs/`. Extend the list with `ungated_paths` in `harness.yml`.
 - The switch: `require_approval: false` in `harness.yml` puts the rule back at instruction level.
 
@@ -116,22 +119,23 @@ For existing projects without the template, adding `"model": "sonnet"` (or `"opu
 | `CLAUDE.md` | a short project map and the hard rules. The agent always reads it |
 | `harness.yml` | settings: model, advisor, Gate 1, check commands, budgets, your own stops, protected and ungated paths, vault. The agent cannot edit it |
 | `.claude/settings.json` | project model, advisor, permissions (allow / ask / deny) and hook wiring |
-| `.claude/hooks/guard.py` | blocks dangerous commands, edits to protected files, code edits without an approved contract (Gate 1) and edits outside the approved contract's `scope` block |
+| `.claude/hooks/guard.py` | blocks dangerous commands, edits to protected files, code edits without an approved contract (Gate 1), edits outside the approved contract's `scope` block, and edits to high-risk files the contract does not name. Appends one line per block to `tasks/.guard.log` |
 | `.claude/hooks/test_guard.py` | synthetic tests for `guard.py` and `approve.sh`; one command runs them |
 | `.claude/hooks/model-check.py` | warns at session start when the model differs from the expected one (project or contract) or the advisor disagrees with `harness.yml` |
 | `.claude/agents/critic.md` | the critic: read-only, model opus, verdict format ACCEPT / REJECT |
 | `.claude/agents/contract-reviewer.md` | reviewer of the draft contract: read-only, model opus, advice before Gate 1 (READY / REVISE); the human still decides |
 | `.claude/agents/worker.md` | the worker: does exactly one work package of the contract in a fresh context, writes only inside its package's globs, leaves a note in `tasks/<id>/packages/` |
-| `.claude/commands/` | `/task`, `/work`, `/gate`, `/receipt`, `/retro`, `/swarm` |
+| `.claude/commands/` | `/task`, `/work`, `/gate`, `/receipt`, `/retro`, `/swarm`, `/audit` |
 | `docs/` | `architecture.md`, `commands.md`, `release.md`: filled in per project |
 | `tasks/_TEMPLATE/` | templates for `contract.md`, `state.md`, `receipt.md` |
 | `.github/pull_request_template.md` | PR template; `/receipt` builds a draft `tasks/<id>/pr.md` from it with "must not change" and acceptance checkboxes |
 | `tasks/lessons.md` | the lessons log (flywheel); the agent reads it before a task |
-| `scripts/approve.sh` | Gate 1: contract approval and quick approval. Only a human runs it |
-| `scripts/check.sh` | the ladder of checks; writes `checks.log` into the active task |
-| `scripts/evidence.sh` | matches the test names in the contract's acceptance items against `checks.log`: where each one passed and whether on the current build (`work=`). Read-only; the evidence pass step of `/gate` calls it |
+| `scripts/approve.sh` | Gate 1: contract approval, quick approval, acceptance of contract changes (`--change`). Only a human runs it |
+| `scripts/check.sh` | the ladder of checks; appends each run to the active task's `checks.log`: the tail of every step's output and the per-test result lines from its full output |
+| `scripts/evidence.sh` | checks the proofs before the critic. Read-only; the evidence pass step of `/gate` calls it. It checks that: the tests named in the acceptance items passed on the current build (`work=`); every manual acceptance case in `acceptance-cases.md` has a "yes"; every CONTRACT CHANGES entry is accepted by the human; no test was removed without a record. It lists, without judging: touched paths from "must not change" and touched high-risk files |
 | `scripts/init.sh` | one-time project setup |
 | `scripts/swarm-worktree.sh` | parallel tasks: `launch`, `status`, `approve`, `finish`. Only a human runs it |
+| `scripts/verdicts.sh` | a summary of the critic's verdicts and of the hook's block log: rounds, REJECTs and blockers per task. Read-only; `/audit` runs on it |
 | `scripts/sync-obsidian.sh` | copies the receipt into an Obsidian vault (one way) |
 | `profiles/` | command sets per stack; `ios` includes a pattern-based architecture check |
 
@@ -155,11 +159,14 @@ The source of truth is the repository (`tasks/`): it is versioned and the agent 
 | Code edits only inside the contract's scope | **hook**, if the contract's `scope` block is filled in: the glob list is part of the approved contract's hash and the agent cannot widen it. An empty block = no check |
 | A worker edits only its own package | **hook driven by `tasks/<id>/.package`**, which the `/work` orchestrator writes: protection against accident, not against intent |
 | A worker's DONE and "ready for `/gate`" | **instruction**: the worker reports DONE only with named proofs; before `/gate` the orchestrator looks for the proof of every acceptance item in the logs |
-| The contract's "must not change" is untouched | **critic + SCOPE CHECK in the receipt and the PR** (checked against the diff and visible to the reviewer; no automatic script yet, behaviour without paths is left to the critic) |
-| Tests must not be weakened | **instruction + critic** (it checks this in the diff) |
+| The contract's "must not change" is untouched | **a list from `evidence.sh` + critic + SCOPE CHECK in the receipt and the PR**. The script lists the touched paths under the contract's globs but does not judge: contracts write their exceptions in prose. Behaviour without paths is left to the critic |
+| High-risk files (`high_risk_paths`) | **hook**: only inside an approved task, and only if the full path is named under "Scope (in)"; a quick approval does not open them. The list is empty by default |
+| Only a human accepts a change to an approved contract | **`approve.sh --change` + hook** (the agent cannot write `APPROVED-CHANGES`) **+ `evidence.sh`** (an entry that is not accepted is a PROBLEM). A deviation with no entry at all is caught only by the critic |
+| Manual acceptance is answered by the human | **`evidence.sh`**: it reads the answers from `acceptance-cases.md`; an empty answer or anything but "yes" is a PROBLEM, whatever `state.md` says. The script cannot tell who typed the answer into the file |
+| Tests must not be weakened | **`evidence.sh` for removed tests** (a test that is gone with no record in the contract or under CONTRACT CHANGES is a PROBLEM) **+ instruction and critic** for weakened checks inside a test |
 | Retry and diff-size limits | **instruction** (`budgets` in `harness.yml`); the agent watches them itself |
 
-Weak points worth knowing. First: Gate 1 covers the Edit and Write tools, not Bash. A command like `sed -i` on a project file is not checked by the hook: it is stopped only because it is not in `allow`, so Claude Code asks you. If you work in a mode without confirmations, this protection is gone. Second: the `guard.py` hook matches commands by pattern, not by meaning. It will not notice an obfuscated call (for example, a script that itself calls fastlane or writes the approval file). Third: the agent can edit `scripts/check.sh` and `profiles/`, so in theory it can weaken the checks themselves; that shows in the diff and is left to the critic. For "the agent must not do this by accident" this is enough. It is not protection against malicious intent.
+Weak points worth knowing. First: Gate 1 covers the Edit and Write tools, not Bash. A command like `sed -i` on a project file is not checked by the hook: it is stopped only because it is not in `allow`, so Claude Code asks you. If you work in a mode without confirmations, this protection is gone. Second: the `guard.py` hook matches commands by pattern, not by meaning. It will not notice an obfuscated call (for example, a script that itself calls fastlane or writes the approval file). Third: the agent can edit `scripts/check.sh` and `profiles/`, so in theory it can weaken the checks themselves; that shows in the diff and is left to the critic. Fourth: the agent itself runs `scripts/evidence.sh` in the `/gate` step, and its PROBLEM stops the work by that step's instruction, not by a hook. For "the agent must not do this by accident" this is enough. It is not protection against malicious intent.
 
 ## Customising for a project
 
@@ -184,9 +191,12 @@ Weak points worth knowing. First: Gate 1 covers the Edit and Write tools, not Ba
 - A step with status SKIP does not count as passed: it goes into NOT VERIFIED. Until `arch` is configured, the critic checks architecture from the diff only.
 - On a second run `init.sh` does not rename the `CLAUDE.md` heading (the placeholder is already replaced). Fix it by hand.
 - The scripts are tested on Linux. On macOS they target the stock bash 3.2 and the `python3` from Xcode Command Line Tools, but make the first run on your Mac yourself.
-- The template has been run on one project (Tapestry, iOS, about 40 tasks). On another stack treat the first run as a test: take a small first task.
+- The template has been run on one project (Tapestry, iOS, about 65 tasks). On another stack treat the first run as a test: take a small first task.
 - `model-check.py` is tested only on synthetic inputs (match, mismatch, contract override, missing field). Whether your Claude Code version passes the `model` field in SessionStart has not been checked in a live session; if it does not, the hook says "cannot verify" instead of staying silent.
-- The hook (Gate 1 and scope) and `approve.sh` are tested with synthetic tests (`python3 .claude/hooks/test_guard.py`, 85 cases) on Linux and on macOS. Confirmed in live Claude Code sessions in Tapestry: the hook fires on edits from a subagent. Not checked: whether your Claude Code version sets the `CLAUDECODE` variable (the terminal check does not depend on it).
+- The hook (Gate 1 and scope) and `approve.sh` are tested with synthetic tests (`python3 .claude/hooks/test_guard.py`, 100 cases) on Linux and on macOS. Confirmed in live Claude Code sessions in Tapestry: the hook fires on edits from a subagent. Not checked: whether your Claude Code version sets the `CLAUDECODE` variable (the terminal check does not depend on it).
+- What was added on 26 November 2026 (`approve.sh --change`, the manual acceptance check, the scope list, removed tests, the block log, high-risk paths, `verdicts.sh`, `/audit`) is tested synthetically and against closed Tapestry tasks, but has not yet been through a single live task.
+- `evidence.sh` matches tests by XCTest lines (`Test Case '…' passed`) and by `ue-unit: test …` lines (an Unreal Automation runner script in one of the projects). It does not read Swift Testing or other runners: such acceptance items are listed as "check by hand".
+- `tasks/.guard.log` holds the text of each blocked command (up to 300 characters). The file is local and git-ignored.
 - A project created from an older version of the template: after `guard.py` is updated, Gate 1 turns on immediately, even if its `harness.yml` has no `require_approval` key. Copy `scripts/approve.sh` together with the hook.
 
 ## Licence
