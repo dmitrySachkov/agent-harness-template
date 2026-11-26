@@ -113,6 +113,12 @@ do_remove() {
     echo "Branch $branch is not merged into $(git branch --show-current). Merge it first, or remove the checkout by hand." >&2
     return 1
   fi
+  # Numbered diffs of the critic rounds are git-ignored, so they would die with the checkout: keep them by the verdicts.
+  for p in "$dest"/tasks/*/diff.attempt-*.patch; do
+    [ -f "$p" ] || continue
+    keep="tasks/$(basename "$(dirname "$p")")"
+    if [ -d "$keep" ]; then cp -n "$p" "$keep/" 2>/dev/null || true; fi
+  done
   git worktree remove --force "$dest"
   git branch -d "$branch"
   if [ -z "${SWARM_NO_SIM:-}" ] && have_sim "$sim"; then xcrun simctl delete "$sim"; echo "simulator removed: $sim"; fi

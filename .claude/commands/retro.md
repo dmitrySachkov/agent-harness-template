@@ -6,7 +6,12 @@ argument-hint: [what went wrong, optional]
 A run failed, was rejected, or needed a human to step in. Do not just fix the output; find what in the system allowed it. Context: $ARGUMENTS
 
 1. Read the active task's `state.md`, `checks.log`, `verdict.md` (if present) and `tasks/lessons.md`.
-2. Answer each question with a concrete observation from this run, or "no":
+2. First place the failure with three questions about the failed run. Answer each with a concrete observation, and treat each "no" as the layer to fix:
+   - Could the agent see it? The fact it needed was in the contract, the map, `state.md` or a file it was pointed to. No -> contract, map or state.
+   - Could it do it? A tool or command for the action existed and was permitted. No -> tools or permissions.
+   - Could it tell? A check existed that could have come back red on this mistake. No -> checks or exits.
+   If all three are yes and the same failure has repeated, say so plainly: the cause may be the model or the framing of the task, not the harness. Do not invent a harness fix for it.
+   Then answer each question below with a concrete observation from this run, or "no":
    - Was the task contract ambiguous or missing a constraint?
    - Was important context invisible (not in the map, not in docs)?
    - Was the wrong tool or command used, or a precondition missing?

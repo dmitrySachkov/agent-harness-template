@@ -27,6 +27,9 @@
 <!-- The contract is frozen after approval. If a proof the contract requires (a named test, a case, a check) cannot be
 done as written, or you want to move it (for example from a unit test to a manual item), do NOT move it quietly:
 write here the item, what the contract says, what you propose, and ask the human. Record his words and the date.
+The human accepts each entry with `./scripts/approve.sh --change` in his own terminal. Words in the chat are not an
+acceptance: `scripts/evidence.sh` reports every entry he has not accepted that way, and /gate does not go on with one.
+Do not edit an accepted entry (the edit voids the acceptance): add a new entry.
 A proof that is moved, weakened or dropped without an entry with the human's words is UNMET for the critic.
 "none" if nothing changed. -->
 - none

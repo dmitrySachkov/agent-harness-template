@@ -5,6 +5,7 @@
 #   scripts/approve.sh --quick [N]       allow a small change without a contract: up to N files (default 3), 60 minutes
 #   scripts/approve.sh --revoke [task]   withdraw the approval (and any quick approval)
 #   scripts/approve.sh --status          show what is approved right now
+#   scripts/approve.sh --change [task]   accept entries of "## CONTRACT CHANGES" in state.md (asks about each one)
 # Approving sets `status: APPROVED` in contract.md and writes tasks/<id>/APPROVED with the sha256
 # of the contract. .claude/hooks/guard.py lets the agent edit project code only while that hash
 # matches, so any later change of the contract needs a new approval.
@@ -16,6 +17,7 @@ case "${1:-}" in
   --quick)  MODE=quick;  ARG="${2:-3}" ;;
   --revoke) MODE=revoke; ARG="${2:-}" ;;
   --status) MODE=status ;;
+  --change) MODE=change; ARG="${2:-}" ;;
   -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
   -*) echo "unknown argument: $1" >&2; exit 64 ;;
   *) ARG="${1:-}" ;;
@@ -121,6 +123,73 @@ PY
     echo "No task approval to withdraw. Quick approval removed if there was one."
   fi
   exit 0
+fi
+
+if [ "$MODE" = "change" ]; then
+  [ -n "$TASK" ] || { echo "No task given and tasks/.active is empty." >&2; exit 1; }
+  case "$TASK" in */*|.|..) echo "Task must be a directory name under tasks/, got: $TASK" >&2; exit 64 ;; esac
+  [ -f "tasks/$TASK/state.md" ] || { echo "Not found: tasks/$TASK/state.md" >&2; exit 1; }
+  python3 - "tasks/$TASK" <<'PY'
+import hashlib, os, re, sys, time
+tdir = sys.argv[1]
+
+def change_entries(path):
+    """Entries of '## CONTRACT CHANGES' in state.md: one per list item, continuation lines joined; 'none' skipped."""
+    out, cur, inside, comment = [], None, False, False
+    for l in open(path, encoding="utf-8", errors="replace").read().splitlines():
+        if l.startswith("## "):
+            inside = l.strip().upper().startswith("## CONTRACT CHANGES")
+            cur = None
+            continue
+        if not inside:
+            continue
+        if "<!--" in l:
+            comment = True
+        if comment:
+            if "-->" in l:
+                comment = False
+            continue
+        if re.match(r"^[-*]\s+\S", l):
+            cur = [l.strip()]
+            out.append(cur)
+        elif l.strip() and cur is not None:
+            cur.append(l.strip())
+        else:
+            cur = None
+    texts = [re.sub(r"\s+", " ", " ".join(e)).strip() for e in out]
+    return [x for x in texts if not re.match(r"^[-*]\s+(none|нет)\W*$", x, re.I)]
+
+def change_hash(text):
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+stamp = os.path.join(tdir, "APPROVED-CHANGES")
+have = set()
+if os.path.exists(stamp):
+    have = set(re.findall(r"^sha256:\s*([0-9a-f]{64})", open(stamp, encoding="utf-8").read(), re.M))
+entries = change_entries(os.path.join(tdir, "state.md"))
+new = [e for e in entries if change_hash(e) not in have]
+print("%s: %d entr(ies) under CONTRACT CHANGES, %d already accepted, %d to decide" % (tdir, len(entries), len(entries) - len(new), len(new)))
+if not new:
+    sys.exit(0)
+tty = open("/dev/tty", encoding="utf-8", errors="replace")
+accepted = 0
+for n, e in enumerate(new, 1):
+    print("\n[%d of %d]\n%s\n" % (n, len(new), e))
+    sys.stdout.write("Accept this change of the contract? [y/N/q] ")
+    sys.stdout.flush()
+    a = tty.readline().strip().lower()
+    if a in ("q", "quit"):
+        break
+    if a in ("y", "yes", "д", "да"):
+        with open(stamp, "a", encoding="utf-8") as fh:
+            fh.write("sha256: %s  accepted_at: %s  %s\n" % (change_hash(e), time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), e[:70]))
+        accepted += 1
+        print("accepted")
+    else:
+        print("NOT accepted: for the critic the contract stands as written")
+print("\n%d accepted now, %d left without acceptance. File: %s" % (accepted, len(new) - accepted, stamp))
+PY
+  exit $?
 fi
 
 # --- approve ---

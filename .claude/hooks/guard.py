@@ -71,6 +71,7 @@ BUILTIN_PROTECTED = [
     ".claude/agents/contract-reviewer.md",
     "scripts/approve.sh",
     "tasks/*/APPROVED",
+    "tasks/*/APPROVED-CHANGES",
     "tasks/.quick",
     ".env",
     ".env.*",

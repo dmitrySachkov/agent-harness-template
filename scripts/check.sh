@@ -103,6 +103,16 @@ for step in lint build unit arch ui; do
     logline "## $step: $status"
     logline "command: $cmd"
     tail -n 60 "$out" >> "${LOG:-/dev/null}" 2>/dev/null
+    # Per-test result lines of the FULL output (the tail above loses them on a large target). evidence.sh reads these.
+    if [ -n "$LOG" ]; then
+      per_test=$(grep -E "Test Case '.*' (passed|failed)|Executed [0-9]+ tests?, with|\\*\\* TEST (SUCCEEDED|FAILED) \\*\\*" "$out" 2>/dev/null || true)
+      if [ -n "$per_test" ]; then
+        n_lines=$(printf '%s\n' "$per_test" | wc -l | tr -d ' ')
+        logline "### per-test results of $step: $n_lines line(s) filtered from the full output (last 6000 kept)"
+        printf '%s\n' "$per_test" | tail -n 6000 >> "$LOG"
+        logline "### end of per-test results of $step"
+      fi
+    fi
     rm -f "$out"
   fi
 
