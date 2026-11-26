@@ -300,6 +300,18 @@ approve(r)
 check("scope does not unlock protected paths", edit(r, "Sources/Domain/Generated.swift")[0], BLOCK)
 shutil.rmtree(r)
 
+r = make_project()
+os.makedirs(os.path.join(r, "tasks"), exist_ok=True)
+glog = os.path.join(r, "tasks", ".guard.log")
+check("log: a code edit without approval is blocked", edit(r, "Sources/A.swift")[0], BLOCK)
+glines = open(glog, encoding="utf-8").read().splitlines() if os.path.exists(glog) else []
+check("log: the block left one line in tasks/.guard.log", len(glines), 1)
+check("log: the line names the path and the mode", "Sources/A.swift" in "".join(glines) and '"mode": "path"' in "".join(glines), True)
+edit(r, "docs/x.md")
+check("log: an allowed edit leaves no line", len(open(glog, encoding="utf-8").read().splitlines()) if os.path.exists(glog) else 0, 1)
+check("log: the agent cannot Write tasks/.guard.log", edit(r, "tasks/.guard.log")[0], BLOCK)
+shutil.rmtree(r)
+
 print()
 print("%d passed, %d failed" % (results.count(True), results.count(False)))
 sys.exit(0 if all(results) else 1)

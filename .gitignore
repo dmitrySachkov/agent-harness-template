@@ -7,3 +7,4 @@ tasks/*/.package
 tasks/.swarm-*
 .claude/settings.local.json
 .DS_Store
+tasks/.guard.log

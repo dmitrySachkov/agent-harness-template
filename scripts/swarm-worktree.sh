@@ -119,6 +119,8 @@ do_remove() {
     keep="tasks/$(basename "$(dirname "$p")")"
     if [ -d "$keep" ]; then cp -n "$p" "$keep/" 2>/dev/null || true; fi
   done
+  # The hook's log of this checkout goes to the main one (the harness audit counts blocks from it).
+  if [ -f "$dest/tasks/.guard.log" ] && [ -d tasks ]; then cat "$dest/tasks/.guard.log" >> tasks/.guard.log 2>/dev/null || true; fi
   git worktree remove --force "$dest"
   git branch -d "$branch"
   if [ -z "${SWARM_NO_SIM:-}" ] && have_sim "$sim"; then xcrun simctl delete "$sim"; echo "simulator removed: $sim"; fi

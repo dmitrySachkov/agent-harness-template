@@ -73,6 +73,7 @@ BUILTIN_PROTECTED = [
     "tasks/*/APPROVED",
     "tasks/*/APPROVED-CHANGES",
     "tasks/.quick",
+    "tasks/.guard.log",
     ".env",
     ".env.*",
     "**/.env",
@@ -120,7 +121,31 @@ def read_scalar(cfg_path, key):
     return ""
 
 
+LOG_CTX = {}  # filled in main(): root, mode, what
+
+
 def block(msg):
+    # One line per block in tasks/.guard.log, for the harness audit (scripts/verdicts.sh, /audit).
+    # A failed write never changes the verdict.
+    try:
+        root = LOG_CTX.get("root")
+        if root and os.path.isdir(os.path.join(root, "tasks")):
+            try:
+                with open(os.path.join(root, "tasks", ".active"), encoding="utf-8") as fh:
+                    task = fh.read().strip()[:120]
+            except OSError:
+                task = ""
+            rec = {
+                "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "task": task,
+                "mode": LOG_CTX.get("mode", ""),
+                "what": LOG_CTX.get("what", ""),
+                "why": msg[:160],
+            }
+            with open(os.path.join(root, "tasks", ".guard.log"), "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
     sys.stderr.write("BLOCKED by harness: " + msg + "\n")
     sys.exit(2)
 
@@ -300,6 +325,11 @@ def main():
     tool_input = data.get("tool_input") or {}
     root = os.environ.get("CLAUDE_PROJECT_DIR") or data.get("cwd") or os.getcwd()
     cfg = os.path.join(root, "harness.yml")
+    LOG_CTX.update(
+        root=os.path.realpath(root),
+        mode=mode,
+        what=str(tool_input.get("command") or tool_input.get("file_path") or tool_input.get("notebook_path") or "")[:300],
+    )
 
     if mode == "bash":
         cmd = tool_input.get("command", "") or ""

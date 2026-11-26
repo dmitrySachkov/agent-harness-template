@@ -281,5 +281,48 @@ if os.path.exists(spath):
         print(f"contract changes: {len(entries)} entr(ies) in state.md; {len(entries) - ch_bad} accepted, {ch_bad} not")
         if ch_bad:
             print("A change is accepted only by ./scripts/approve.sh --change in the human's own terminal. Words in the chat do not count: ask the human, and do not start the critic. An accepted entry must not be edited (the edit voids it): add a new entry.")
-sys.exit(1 if bad_items or man_bad or ch_bad or not items else 0)
+
+# Removed tests: a test function that was in the baseline and is gone now (not moved to another file, not
+# re-added) must be named in the contract or in an entry under CONTRACT CHANGES. Otherwise it is a PROBLEM.
+rm_bad = 0
+if base:
+    d = _git("diff", "--no-renames", "-U0", base, rev) if rev else _git("diff", "--no-renames", "-U0", base)
+    if d is not None:
+        tpat = re.compile(r"\b(?:func\s+(test\w+)\s*\(|def\s+(test_\w+)\s*\()")
+        gone, came, cur_file = {}, set(), ""
+        for l in d:
+            if l.startswith("--- a/"):
+                cur_file = l[6:]
+            if l.startswith("+++ ") or l.startswith("--- "):
+                continue
+            m = tpat.search(l[1:]) if l[:1] in ("+", "-") else None
+            if m:
+                name = m.group(1) or m.group(2)
+                if l[0] == "-":
+                    gone.setdefault(name, cur_file)
+                else:
+                    came.add(name)
+        if not rev:  # a test moved into a file git does not track yet is not removed
+            for p in _git("ls-files", "--others", "--exclude-standard") or []:
+                try:
+                    for m in tpat.finditer(open(p, encoding="utf-8", errors="replace").read()):
+                        came.add(m.group(1) or m.group(2))
+                except OSError:
+                    pass
+        removed = sorted(n for n in gone if n not in came)
+        if removed:
+            ctext = "\n".join(contract)
+            chtext = " ".join(change_entries(spath)) if os.path.exists(spath) else ""
+            for n in removed:
+                if re.search(r"\b%s\b" % re.escape(n), chtext):
+                    print(f"TEST REMOVED          {n} ({gone[n]}): recorded under CONTRACT CHANGES")
+                elif re.search(r"\b%s\b" % re.escape(n), ctext):
+                    print(f"TEST REMOVED          {n} ({gone[n]}): named in the contract")
+                else:
+                    rm_bad += 1
+                    print(f"TEST REMOVED PROBLEM  {n} ({gone[n]}): not named in the contract and not under CONTRACT CHANGES")
+            print(f"removed tests: {len(removed)}; {rm_bad} without a record")
+            if rm_bad:
+                print("A removed or renamed test needs an entry under CONTRACT CHANGES (the item, what the contract says, what replaces the test), accepted by the human.")
+sys.exit(1 if bad_items or man_bad or ch_bad or rm_bad or not items else 0)
 PY
