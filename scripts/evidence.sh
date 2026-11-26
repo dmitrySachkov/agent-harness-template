@@ -10,6 +10,8 @@
 # red runs included) whose work= equals the work= of the last run. Of the current lines the LAST one decides, so a
 # red run followed by the green run ends as passed. A pass seen only under another work= is OLDER BUILD: the code
 # changed after it, so it proves nothing about the current code.
+# Unreal Automation: when checks.log has `ue-unit: test <Full.Path> <State>` lines (scripts/ue-unit.sh), a contract
+# name like `Supply.Commands` is matched against the end of the full path. A test the runner did not print is PARTIAL.
 # Limits, on purpose: it reads XCTest lines (`Test Case '-[Module.Class testName]' passed|failed`); it does not
 # judge proofs that are a command, a measure or a manual result (listed BY HAND); PASS means only that the named
 # tests passed. check.sh appends the per-test lines of each step's full output to checks.log ("### per-test results").
@@ -65,6 +67,33 @@ for i, l in enumerate(log):
     if m:
         res.append((i, m.group(1), m.group(2), m.group(3), run_of(i)))
 undecided = not res
+# Unreal Automation, as scripts/ue-unit.sh prints it: "ue-unit: test <Full.Test.Path> <State>". The script prints only
+# the first 10 tests of a run and then "N more tests not printed", so a test that is not in the log may still have run.
+ue_pat = re.compile(r"ue-unit: test (\S+) (\S+)\s*$")
+ue_res = []  # (lineno, full path, state, run index)
+ue_cut = set()  # runs that say some tests were not printed
+for i, l in enumerate(log):
+    m = ue_pat.search(l)
+    if m:
+        ue_res.append((i, m.group(1), m.group(2), run_of(i)))
+    elif re.search(r"ue-unit: \d+ more tests not printed", l):
+        ue_cut.add(run_of(i))
+ue_name = re.compile(r"[A-Z]\w*(?:\.[A-Z]\w*)+")
+
+def judge_ue(name):
+    hits = [r for r in ue_res if r[1] == name or r[1].endswith("." + name)]
+    now = [r for r in hits if current(r[3])]
+    if now:
+        r = max(now, key=lambda x: x[0])
+        if r[2] == "Success":
+            return "ok", f"Success (checks.log:{r[0] + 1})"
+        return "bad", f"{r[2]} in the current build (checks.log:{r[0] + 1})"
+    if any(current(k) for k in ue_cut):
+        return "unk", "NOT PRINTED: ue-unit.sh prints only the first 10 tests of a run, check this one by hand"
+    if hits:
+        r = max(hits, key=lambda x: x[0])
+        return "bad", f"OLDER BUILD: {r[2]} at checks.log:{r[0] + 1}, not in a run on the current build"
+    return "bad", "MISSING: no ue-unit test line in checks.log"
 
 items, cur, inside = [], None, False
 for l in contract:
@@ -107,16 +136,21 @@ for iid, text in items:
         m = name_pat.fullmatch(span.strip())
         if m and (m.group(1), m.group(2)) not in names:
             names.append((m.group(1), m.group(2)))
+        elif not m and ue_res and ue_name.fullmatch(span.strip()) and ("UE", span.strip()) not in names:
+            names.append(("UE", span.strip()))
     if not names:
         by_hand += 1
         out.append(f"{iid:<5} BY HAND  no named test: a command, a measure or a manual result, check it yourself")
         continue
     tested += 1
-    verdicts = [judge(c, n) for c, n in names]
+    verdicts = [(judge_ue(n) if c == "UE" else judge(c, n)) for c, n in names]
     nbad = sum(1 for v, _ in verdicts if v == "bad")
+    nunk = sum(1 for v, _ in verdicts if v == "unk")
     if nbad:
         bad_items += 1
-        out.append(f"{iid:<5} PROBLEM  {len(names) - nbad} of {len(names)} named tests proven on the current build")
+        out.append(f"{iid:<5} PROBLEM  {len(names) - nbad - nunk} of {len(names)} named tests proven on the current build")
+    elif nunk:
+        out.append(f"{iid:<5} PARTIAL  {len(names) - nunk} of {len(names)} named tests seen passing; {nunk} not printed by the runner, check by hand")
     else:
         out.append(f"{iid:<5} PASS     {len(names)} named test(s) passed on the current build")
     for (c, n), (v, why) in zip(names, verdicts):
@@ -230,6 +264,30 @@ else:
         if lines:
             print("\n".join(lines))
             print("Every TOUCHED or DELETED path needs an exception the contract names, or an accepted CONTRACT CHANGES entry; without one it is a violation. NEW is a file created under a frozen glob: usually allowed, say where the contract allows it. Exceptions written in prose are not read here: check each line yourself.")
+
+# High-risk paths (high_risk_paths in harness.yml): which of them this task changed. The hook enforces the rule
+# (full path under Scope (in), no quick approval); this is the list for HIGH PATH TOUCHED in the receipt.
+hr, act = [], False
+try:
+    for l in open("harness.yml", encoding="utf-8"):
+        if re.match(r"^[A-Za-z_]+:", l):
+            act = l.startswith("high_risk_paths:")
+            continue
+        m = re.match(r"^\s*-\s+(.*?)\s*$", l)
+        if act and m and not l.lstrip().startswith("#"):
+            hr.append(m.group(1).strip("\"'"))
+except OSError:
+    pass
+if hr and base:
+    ch = _git("diff", "--name-only", "--no-renames", base, rev) if rev else _git("diff", "--name-only", "--no-renames", base)
+    ex = [] if rev else _git("ls-files", "--others", "--exclude-standard")
+    if ch is not None:
+        touched = sorted(set(p for p in ch + (ex or []) if p and any(fnmatch.fnmatchcase(p, g) or fnmatch.fnmatchcase("/" + p, g) for g in hr)))
+        print(f"high-risk paths: {len(hr)} glob(s) in harness.yml; {len(touched)} matching file(s) changed by this task")
+        for p in touched:
+            print(f"HIGH RISK TOUCHED  {p}")
+        if touched:
+            print("Copy every HIGH RISK TOUCHED line to HIGH PATH TOUCHED in the receipt, with the line of Scope (in) that names the file.")
 
 # Contract changes: an entry of "## CONTRACT CHANGES" in state.md counts only when the human accepted it
 # with scripts/approve.sh --change (its sha256 is then in APPROVED-CHANGES, a file the agent cannot write).

@@ -16,6 +16,12 @@
 <!-- One line per item under "Out of scope / must not change" in the contract. Evidence from the diff (`git diff --name-only`, untracked files), not from memory. -->
 - <item from the contract>: UNTOUCHED | TOUCHED | UNVERIFIED. <evidence>
 
+## HIGH PATH TOUCHED
+<!-- Every file under high_risk_paths (harness.yml) that this task changed: the HIGH RISK TOUCHED lines of
+scripts/evidence.sh, one per line, each with the line of the contract's Scope (in) that names the file.
+"none" if evidence.sh lists none. Never from memory. -->
+-
+
 ## VERIFIED
 <!-- Each line: what, and the evidence (check step PASS, test name, file:line), starting with its kind: [test] a named test that passed, [trace] raw command output in the log, [manual] the human's words. A line whose only support is the author's own text is not VERIFIED: it goes to NOT VERIFIED. -->
 -

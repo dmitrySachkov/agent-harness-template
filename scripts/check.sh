@@ -105,7 +105,7 @@ for step in lint build unit arch ui; do
     tail -n 60 "$out" >> "${LOG:-/dev/null}" 2>/dev/null
     # Per-test result lines of the FULL output (the tail above loses them on a large target). evidence.sh reads these.
     if [ -n "$LOG" ]; then
-      per_test=$(grep -E "Test Case '.*' (passed|failed)|Executed [0-9]+ tests?, with|\\*\\* TEST (SUCCEEDED|FAILED) \\*\\*" "$out" 2>/dev/null || true)
+      per_test=$(grep -E "Test Case '.*' (passed|failed)|Executed [0-9]+ tests?, with|\\*\\* TEST (SUCCEEDED|FAILED) \\*\\*|^ue-unit: (test|counts|result|[0-9]+ more tests) " "$out" 2>/dev/null || true)
       if [ -n "$per_test" ]; then
         n_lines=$(printf '%s\n' "$per_test" | wc -l | tr -d ' ')
         logline "### per-test results of $step: $n_lines line(s) filtered from the full output (last 6000 kept)"

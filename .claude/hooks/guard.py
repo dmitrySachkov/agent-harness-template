@@ -275,6 +275,30 @@ def quick_approval(root, rel):
     return True, ""
 
 
+def high_risk(cfg, rel):
+    """The glob of high_risk_paths (harness.yml) that `rel` matches, or an empty string."""
+    for pat in read_list(cfg, "high_risk_paths"):
+        if fnmatch.fnmatchcase(rel, pat) or fnmatch.fnmatchcase("/" + rel, pat):
+            return pat
+    return ""
+
+
+def named_in_scope(root, task, rel):
+    """Is `rel` written out as a full path under '## Scope (in)' of the task's contract? A glob or a folder is not."""
+    inside, text = False, []
+    try:
+        with open(os.path.join(root, "tasks", task, "contract.md"), encoding="utf-8") as fh:
+            for raw in fh:
+                if raw.startswith("## "):
+                    inside = raw.lower().startswith("## scope (in)")
+                    continue
+                if inside:
+                    text.append(raw)
+    except OSError:
+        return False
+    return re.search(r"(?<![\w./-])" + re.escape(rel) + r"(?![\w/-])", "".join(text)) is not None
+
+
 def gate1(root, cfg, rel):
     """Block edits of project code while no human approval is in force."""
     if read_scalar(cfg, "require_approval").lower() in ("false", "no", "off", "0"):
@@ -291,13 +315,27 @@ def gate1(root, cfg, rel):
     for pat in BUILTIN_UNGATED + read_list(cfg, "ungated_paths"):
         if fnmatch.fnmatchcase(rel, pat):
             return
+    high = high_risk(cfg, rel)
     ok, why = task_approval(root)
     scope_block = False
     if ok:
         ok, why = scope_check(root, active_task(root), rel)
         if ok:
+            if high and not named_in_scope(root, active_task(root), rel):
+                block(
+                    "High-risk path: %s matches '%s' (high_risk_paths in harness.yml) and the approved contract does "
+                    "not write its full path under '## Scope (in)'. A folder or a glob there does not count. Stop and "
+                    "say so: the human adds the path to the contract and approves again. A quick approval does not "
+                    "open high-risk paths." % (rel, high)
+                )
             return
         scope_block = True
+    if high and not scope_block:
+        block(
+            "High-risk path: %s matches '%s' (high_risk_paths in harness.yml). It can be edited only inside an "
+            "approved task whose contract writes its full path under '## Scope (in)'; a quick approval does not "
+            "open it. Now: %s. Stop and ask the human for a contract (/task)." % (rel, high, why)
+        )
     ok, quick_why = quick_approval(root, rel)
     if ok:
         return

@@ -58,3 +58,10 @@ ungated_paths:
 
 # Optional: absolute path to an Obsidian vault. scripts/sync-obsidian.sh copies receipts there.
 obsidian_vault: ""
+
+# High-risk paths (globs relative to the repo root): files where a mistake is expensive to undo.
+# The hook lets the agent edit such a file only inside an approved task whose contract writes the file's full
+# path under "## Scope (in)"; `approve.sh --quick` never opens it. scripts/evidence.sh lists the ones a task
+# changed, and the receipt has a HIGH PATH TOUCHED section for them. Empty list = the rule is off.
+high_risk_paths:
+  # - "Packages/Data/**"

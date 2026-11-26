@@ -312,6 +312,24 @@ check("log: an allowed edit leaves no line", len(open(glog, encoding="utf-8").re
 check("log: the agent cannot Write tasks/.guard.log", edit(r, "tasks/.guard.log")[0], BLOCK)
 shutil.rmtree(r)
 
+r = make_project('high_risk_paths:\n  - "Sources/Data/**"\n  - "**/Info.plist"\n')
+check("high: a quick approval is granted", approve(r, "--quick", "3"), 0)
+check("high: the quick approval does not open a high-risk path", edit(r, "Sources/Data/Store.swift")[0], BLOCK)
+check("high: the quick approval still opens other code", edit(r, "Sources/A.swift")[0], ALLOW)
+approve(r, "--revoke")
+with open(os.path.join(r, "tasks", TASK, "contract.md"), "w", encoding="utf-8") as fh:
+    fh.write(CONTRACT + "\n## Scope (in)\n- `Sources/Data/Store.swift`: the store\n- everything in Sources/Data and the App folder\n"
+             "\n## Out of scope / must not change\n- `App/Info.plist`\n")
+set_active(r)
+approve(r)
+check("high: a path written out under Scope (in) is allowed", edit(r, "Sources/Data/Store.swift")[0], ALLOW)
+code, msg = edit(r, "Sources/Data/Other.swift")
+check("high: a high-risk path covered only by a folder in Scope (in) is blocked", code, BLOCK)
+check("... and the message says it is a high-risk block", "High-risk path" in msg, True)
+check("high: a path named only outside Scope (in) is blocked", edit(r, "App/Info.plist")[0], BLOCK)
+check("high: ordinary code of the approved task is still allowed", edit(r, "Sources/A.swift")[0], ALLOW)
+shutil.rmtree(r)
+
 print()
 print("%d passed, %d failed" % (results.count(True), results.count(False)))
 sys.exit(0 if all(results) else 1)

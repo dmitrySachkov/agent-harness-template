@@ -13,6 +13,7 @@ Write `T/receipt.md` using `tasks/_TEMPLATE/receipt.md`. The rule: **only what t
 - MODEL: the expected model (`model:` in the contract, or `model:` in `harness.yml` when the contract says `default`) and the model this session actually ran on. The actual one comes from a model-check message in this session or from the status line; do not state it from memory. If neither shows it, write UNVERIFIED. A mismatch is not a blocker, but it goes under RISKS.
 - CHANGED: from `diff.patch` (files and what changed, one line each).
 - SCOPE CHECK: for every item under "Out of scope / must not change" in the contract, write UNTOUCHED, TOUCHED or UNVERIFIED with evidence: compare the paths in `diff.patch` (changed and untracked files) with the item. Items about behavior rather than paths are UNVERIFIED unless a check or the critic's verdict covers them. If any item is TOUCHED, the receipt is not final: say which one and stop.
+- HIGH PATH TOUCHED: run `./scripts/evidence.sh` for the task and copy its `HIGH RISK TOUCHED` lines, each with the line of the contract's "Scope (in)" that names the file. `none` if it lists none. Never fill this from memory.
 - VERIFIED: each PASS step from the LAST `# check run` section of `checks.log` (never from an older run), and each acceptance item the critic marked MET, with its evidence.
 - NOT VERIFIED: every SKIP and every UNVERIFIED item, plus anything you could not check here (real device, production service, other platforms).
 - DECISIONS: from `state.md`, with the reason for each.
